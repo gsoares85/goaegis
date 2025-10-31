@@ -71,7 +71,7 @@ type Router interface {
 
 // HandlerFunc defines the signature for route handlers.
 // It receives a Context which provides access to request data and response methods.
-type HandlerFunc func(ctx context.Context) error
+type HandlerFunc func(ctx Context) error
 
 // Context provides methods to access request data and write responses.
 // It wraps http.Request and http.ResponseWriter with convenient methods.

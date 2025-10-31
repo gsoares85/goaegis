@@ -80,7 +80,7 @@ func TestDefaultConfigOptions(t *testing.T) {
 		t.Errorf("DefaultConfigOptions().Host = %v, want %v", opts.Host, "0.0.0.0")
 	}
 	if opts.Environment != "development" {
-		t.Errorf("DefaultConfigOptions().Environment = %v, want %v", opts.ReadTimeout, "development")
+		t.Errorf("DefaultConfigOptions().Environment = %v, want %v", opts.Environment, "development")
 	}
 	if opts.EnableCors != false {
 		t.Errorf("DefaultConfigOptions().EnableCors = %v, want %v", opts.EnableCors, false)
