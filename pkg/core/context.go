@@ -42,6 +42,9 @@ type AppContext struct {
 	// statusCode stores the HTTP status code to be written
 	statusCode int
 
+	//headerWritten indicates if the header has been written
+	headerWritten bool
+
 	// written indicates if the response has been written
 	written bool
 
@@ -160,6 +163,7 @@ func (c *AppContext) Body(v interface{}) error {
 func (c *AppContext) JSON(statusCode int, data interface{}) error {
 	c.SetHeader("Content-Type", "application/json")
 	c.Status(statusCode)
+	c.writeHeaderOnce()
 
 	encoder := json.NewEncoder(c.response)
 	if err := encoder.Encode(data); err != nil {
@@ -181,6 +185,7 @@ func (c *AppContext) JSON(statusCode int, data interface{}) error {
 func (c *AppContext) String(statusCode int, format string, values ...interface{}) error {
 	c.SetHeader("Content-Type", "text/plain; charset=utf-8")
 	c.Status(statusCode)
+	c.writeHeaderOnce()
 
 	text := fmt.Sprintf(format, values...)
 	if _, err := c.response.Write([]byte(text)); err != nil {
@@ -200,6 +205,7 @@ func (c *AppContext) String(statusCode int, format string, values ...interface{}
 func (c *AppContext) HTML(statusCode int, html string) error {
 	c.SetHeader("Content-Type", "text/html; charset=utf-8")
 	c.Status(statusCode)
+	c.writeHeaderOnce()
 
 	if _, err := c.response.Write([]byte(html)); err != nil {
 		return fmt.Errorf("failed to write HTML response: %w", err)
@@ -218,6 +224,7 @@ func (c *AppContext) HTML(statusCode int, html string) error {
 func (c *AppContext) Data(statusCode int, contentType string, data []byte) error {
 	c.SetHeader("Content-Type", contentType)
 	c.Status(statusCode)
+	c.writeHeaderOnce()
 
 	if _, err := c.response.Write(data); err != nil {
 		return fmt.Errorf("failed to write data response: %w", err)
@@ -235,6 +242,7 @@ func (c *AppContext) Data(statusCode int, contentType string, data []byte) error
 //	return c.NoContent(204)
 func (c *AppContext) NoContent(statusCode int) error {
 	c.Status(statusCode)
+	c.writeHeaderOnce()
 	c.written = true
 	return nil
 }
@@ -251,6 +259,7 @@ func (c *AppContext) Redirect(statusCode int, location string) error {
 
 	c.SetHeader("Location", location)
 	c.Status(statusCode)
+	c.writeHeaderOnce()
 	c.written = true
 	return nil
 }
@@ -259,7 +268,6 @@ func (c *AppContext) Redirect(statusCode int, location string) error {
 // Must be called before writing the response body.
 func (c *AppContext) Status(statusCode int) Context {
 	c.statusCode = statusCode
-	c.response.WriteHeader(statusCode)
 	return c
 }
 
@@ -483,6 +491,7 @@ func (c *AppContext) Reset(w http.ResponseWriter, r *http.Request) {
 	c.request = r
 	c.response = w
 	c.statusCode = http.StatusOK
+	c.headerWritten = false
 	c.written = false
 	c.index = -1
 
@@ -510,14 +519,43 @@ func (c *AppContext) Context() context.Context {
 
 // WithContext returns a shallow copy of the AppContext with a new context.Context.
 func (c *AppContext) WithContext(ctx context.Context) Context {
-	newCtx := *c
-	newCtx.request = c.request.WithContext(ctx)
-	return &newCtx
+	if ctx == nil {
+		return c
+	}
+
+	newRequest := c.request.WithContext(ctx)
+
+	c.mu.RLock()
+	paramsCopy := make(map[string]string, len(c.params))
+	for k, v := range c.params {
+		paramsCopy[k] = v
+	}
+	valuesCopy := make(map[string]interface{}, len(c.values))
+	for k, v := range c.values {
+		valuesCopy[k] = v
+	}
+	c.mu.RUnlock()
+
+	handlersCopy := make([]HandlerFunc, len(c.handlers))
+	copy(handlersCopy, c.handlers)
+
+	return &AppContext{
+		request:       newRequest,
+		response:      c.response,
+		statusCode:    c.statusCode,
+		headerWritten: c.headerWritten,
+		written:       c.written,
+		index:         c.index,
+		params:        paramsCopy,
+		values:        valuesCopy,
+		handlers:      handlersCopy,
+	}
 }
 
 // Write implements io.Writer interface.
 // This allows Context to be used directly with functions expecting io.Writer.
 func (c *AppContext) Write(data []byte) (int, error) {
+	c.writeHeaderOnce()
 	c.written = true
 	return c.response.Write(data)
 }
@@ -539,6 +577,7 @@ func (c *AppContext) Stream(statusCode int, contentType string, step func(io.Wri
 	c.SetHeader("Transfer-Encoding", "chunked")
 	c.Status(statusCode)
 
+	c.writeHeaderOnce()
 	c.written = true
 
 	if err := step(c.response); err != nil && err != io.EOF {
@@ -551,4 +590,11 @@ func (c *AppContext) Stream(statusCode int, contentType string, step func(io.Wri
 // Err returns any error stored in the request context.
 func (c *AppContext) Err() error {
 	return c.request.Context().Err()
+}
+
+func (c *AppContext) writeHeaderOnce() {
+	if !c.headerWritten {
+		c.Response().WriteHeader(c.statusCode)
+		c.headerWritten = true
+	}
 }
