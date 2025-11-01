@@ -2,7 +2,10 @@ package core
 
 import (
 	"context"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 )
 
 // Application represents the main application instance that manages the framework lifecycle.
@@ -86,12 +89,18 @@ type Context interface {
 	// For route like /users/:id, the value of :id will be returned by Param("id")
 	Param(name string) string
 
+	// SetParam sets a URL parameter.
+	SetParam(name, value string)
+
 	// Query returns the value of a URL query parameter by name
 	// for route like /users?id=1, the value of id will be returned by Query("id")
 	Query(name string) string
 
 	// QueryDefault returns the query parameter value or a default if not present
 	QueryDefault(name, defaultValue string) string
+
+	// QueryArray returns all values of a URL query parameter.as []string
+	QueryArray(name string) []string
 
 	// Body binds the request body to a struct using JSON decoding.
 	Body(v interface{}) error
@@ -102,14 +111,29 @@ type Context interface {
 	// String sends a string response with the given status code.
 	String(statusCode int, format string, args ...interface{}) error
 
+	// HTML sends an HTML response with the given status code.
+	HTML(statusCode int, html string) error
+
+	// Data writes raw binary data with the specified content type.
+	Data(statusCode int, contentType string, data []byte) error
+
+	// NoContent sends a response with no body content.
+	NoContent(statusCode int) error
+
+	// Redirect sends an HTTP redirect response.
+	Redirect(statusCode int, location string) error
+
 	// Status sets the HTTP status code for the response.
 	Status(statusCode int) Context
 
-	// Set sets a response header.
-	Set(key, value string) Context
+	// GetStatusCode returns the current HTTP status code.
+	GetStatusCode() int
 
-	// Get returns a request header value.
-	Get(key string) string
+	// SetHeader sets a response header.
+	SetHeader(key, value string) Context
+
+	// GetHeader returns a request header value.
+	GetHeader(key string) string
 
 	// SetValue stores a value in the context for later retrieval.
 	// This is useful for passing data between middleware and handlers.
@@ -118,8 +142,74 @@ type Context interface {
 	// GetValue retrieves a value from the context.
 	GetValue(key string) interface{}
 
+	// Method returns the HTTP method of the request (GET, POST, etc.).
+	Method() string
+
+	// Path returns the request URL path.
+	Path() string
+
+	// URL returns the full request URL.
+	URL() *url.URL
+
+	// Host returns the host from the request.
+	Host() string
+
+	// ClientIP attempts to get the real client IP address.
+	ClientIP() string
+
+	// UserAgent returns the User-Agent header value.
+	UserAgent() string
+
+	// FormValue returns the value of a form field.
+	FormValue(key string) string
+
+	// FormFile retrieves a file from multipart form data.
+	FormFile(name string) (multipart.File, *multipart.FileHeader, error)
+
+	// MultipartForm returns the parsed multipart form, including file uploads.
+	MultipartForm() (*multipart.Form, error)
+
+	// Cookie returns the value of a cookie by name.
+	Cookie(name string) (string, error)
+
+	// SetCookie sets a cookie in the response.
+	SetCookie(cookie *http.Cookie) Context
+
+	// IsWebSocket checks if the request is a WebSocket upgrade request.
+	IsWebSocket() bool
+
+	// IsAjax checks if the request is an AJAX request.
+	IsAjax() bool
+
+	// Accepts checks if the client accepts the specified content type.
+	Accepts(contentType string) bool
+
 	// Next advances the request pipeline to the next handler.
 	Next() error
+
+	// SetHandlers sets the handler chain for this context.
+	SetHandlers(handlers []HandlerFunc)
+
+	// Reset resets the context for reuse with a new request/response pair.
+	Reset(w http.ResponseWriter, r *http.Request)
+
+	// IsWritten returns true if the response has been written.
+	IsWritten() bool
+
+	// Context returns the request's context.Context for cancellation and deadlines.
+	Context() context.Context
+
+	// WithContext returns a shallow copy of the AppContext with a new context.Context.
+	WithContext(ctx context.Context) Context
+
+	// Write implements io.Writer interface.
+	Write(data []byte) (int, error)
+
+	// Stream sends a streaming response.
+	Stream(statusCode int, contentType string, step func(io.Writer) error) error
+
+	// Err returns any error stored in the request context.
+	Err() error
 }
 
 // Controller represents a controller that groups related route handlers.
